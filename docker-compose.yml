@@ -1,0 +1,80 @@
+# Docker Compose para desenvolvimento local do Zabbix
+# Este arquivo é opcional e pode ser usado para testar localmente
+
+version: '3.8'
+
+services:
+  zabbix-mysql:
+    image: mysql:8.0
+    container_name: zabbix-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root123}
+      MYSQL_DATABASE: zabbix
+      MYSQL_USER: zabbix
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-zabbix123}
+    volumes:
+      - zabbix_mysql_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    networks:
+      - zabbix_network
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_bin
+
+  zabbix-server:
+    image: zabbix/zabbix-server-mysql:7.0-ubuntu-latest
+    container_name: zabbix-server
+    environment:
+      DB_SERVER_HOST: zabbix-mysql
+      MYSQL_DATABASE: zabbix
+      MYSQL_USER: zabbix
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-zabbix123}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root123}
+    volumes:
+      - zabbix_server_data:/var/lib/zabbix
+    ports:
+      - "10051:10051"
+    networks:
+      - zabbix_network
+    depends_on:
+      - zabbix-mysql
+
+  zabbix-web:
+    image: zabbix/zabbix-web-apache-mysql:7.0-ubuntu-latest
+    container_name: zabbix-web
+    environment:
+      ZBX_SERVER_HOST: zabbix-server
+      DB_SERVER_HOST: zabbix-mysql
+      MYSQL_DATABASE: zabbix
+      MYSQL_USER: zabbix
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-zabbix123}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root123}
+    ports:
+      - "8080:8080"
+    networks:
+      - zabbix_network
+    depends_on:
+      - zabbix-server
+      - zabbix-mysql
+
+  zabbix-agent:
+    image: zabbix/zabbix-agent:7.0-ubuntu-latest
+    container_name: zabbix-agent
+    environment:
+      ZBX_HOSTNAME: Zabbix server
+      ZBX_SERVER_HOST: zabbix-server
+    ports:
+      - "10050:10050"
+    networks:
+      - zabbix_network
+    depends_on:
+      - zabbix-server
+
+volumes:
+  zabbix_mysql_data:
+    driver: local
+  zabbix_server_data:
+    driver: local
+
+networks:
+  zabbix_network:
+    driver: bridge

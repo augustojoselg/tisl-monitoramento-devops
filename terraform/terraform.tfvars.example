@@ -1,0 +1,107 @@
+# Arquivo de exemplo de variáveis para o Terraform
+# Copie este arquivo para terraform.tfvars e configure os valores conforme necessário
+
+# =============================================================================
+# CONFIGURAÇÕES OBRIGATÓRIAS
+# =============================================================================
+
+# ID do projeto GCP (obrigatório)
+project_id = "seu-projeto-gcp-id"
+
+# =============================================================================
+# CONFIGURAÇÕES DO PROJETO
+# =============================================================================
+
+# Nome do projeto (usado para naming dos recursos)
+project_name = "zabbix-monitoring"
+
+# Região e zona GCP
+region = "us-central1"
+zone   = "us-central1-a"
+
+# =============================================================================
+# CONFIGURAÇÕES DE REDE
+# =============================================================================
+
+# CIDR da subnet
+subnet_cidr = "10.0.1.0/24"
+
+# =============================================================================
+# CONFIGURAÇÕES DA INSTÂNCIA
+# =============================================================================
+
+# Tipo de máquina (recomendado para Zabbix 7.0 LTS)
+# Opções: e2-standard-2, e2-standard-4, e2-standard-8, n2-standard-4, etc.
+machine_type = "e2-standard-4"
+
+# Imagem do sistema operacional
+image = "ubuntu-os-cloud/ubuntu-2204-lts"
+
+# Tamanhos dos discos
+boot_disk_size = 50   # GB
+data_disk_size = 100  # GB
+
+# =============================================================================
+# CONFIGURAÇÕES SSH
+# =============================================================================
+
+# Usuário SSH
+ssh_user = "ubuntu"
+
+# Caminho para a chave pública SSH
+ssh_public_key_path = "~/.ssh/id_rsa.pub"
+
+# =============================================================================
+# CONFIGURAÇÕES DO ZABBIX
+# =============================================================================
+
+# Versão do Zabbix
+zabbix_version = "7.0"
+
+# Configurações do banco de dados
+zabbix_db_type     = "mysql"  # ou "postgresql"
+zabbix_db_name     = "zabbix"
+zabbix_db_user     = "zabbix"
+zabbix_db_password = "sua_senha_segura_aqui"
+
+# Configurações do administrador
+zabbix_admin_user     = "admin"
+zabbix_admin_password = "sua_senha_admin_segura_aqui"
+
+# Configurações do MySQL
+mysql_root_password = "sua_senha_root_mysql_segura_aqui"
+
+# =============================================================================
+# CONFIGURAÇÕES DE MONITORAMENTO
+# =============================================================================
+
+# Canais de notificação (opcional)
+# notification_channels = ["projects/seu-projeto/notificationChannels/123456789"]
+
+# =============================================================================
+# TAGS E METADADOS
+# =============================================================================
+
+environment  = "prod"        # dev, staging, prod
+owner        = "devops-team"
+cost_center  = "monitoring"
+
+# =============================================================================
+# EXEMPLOS DE CONFIGURAÇÕES ESPECÍFICAS
+# =============================================================================
+
+# Para ambiente de desenvolvimento (recursos menores):
+# machine_type = "e2-standard-2"
+# boot_disk_size = 30
+# data_disk_size = 50
+# environment = "dev"
+
+# Para ambiente de produção (recursos maiores):
+# machine_type = "e2-standard-8"
+# boot_disk_size = 100
+# data_disk_size = 500
+# environment = "prod"
+
+# Para usar PostgreSQL ao invés de MySQL:
+# zabbix_db_type = "postgresql"
+# zabbix_db_password = "sua_senha_postgresql_aqui"

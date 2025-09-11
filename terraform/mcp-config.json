@@ -1,0 +1,69 @@
+{
+  "mcpServers": {
+    "terraform": {
+      "command": "terraform",
+      "args": [
+        "--version"
+      ],
+      "env": {
+        "TF_LOG": "INFO",
+        "TF_LOG_PATH": "./terraform.log"
+      }
+    },
+    "gcloud": {
+      "command": "gcloud",
+      "args": [
+        "version"
+      ],
+      "env": {
+        "GOOGLE_APPLICATION_CREDENTIALS": ""
+      }
+    }
+  },
+  "terraform": {
+    "version": ">= 1.0",
+    "providers": {
+      "google": "~> 5.0"
+    },
+    "backend": {
+      "type": "gcs",
+      "config": {
+        "bucket": "terraform-state-bucket",
+        "prefix": "zabbix-infrastructure"
+      }
+    }
+  },
+  "gcp": {
+    "project": {
+      "id": "${GCP_PROJECT_ID}",
+      "region": "us-central1",
+      "zone": "us-central1-a"
+    },
+    "apis": [
+      "compute.googleapis.com",
+      "monitoring.googleapis.com",
+      "logging.googleapis.com"
+    ]
+  },
+  "zabbix": {
+    "version": "7.0",
+    "components": [
+      "zabbix-server-mysql",
+      "zabbix-frontend-php",
+      "zabbix-agent",
+      "zabbix-apache-conf",
+      "zabbix-sql-scripts"
+    ],
+    "database": {
+      "type": "mysql",
+      "version": "8.0"
+    },
+    "web_server": {
+      "type": "apache",
+      "version": "2.4"
+    },
+    "php": {
+      "version": "8.1"
+    }
+  }
+}

@@ -1,0 +1,199 @@
+name: Terraform CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform.yml'
+
+env:
+  TF_VERSION: '1.6.0'
+  TF_LOG: INFO
+
+jobs:
+  terraform-validate:
+    name: 'Terraform Validate'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./terraform
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+
+    - name: Terraform Format Check
+      run: terraform fmt -check -recursive
+
+    - name: Terraform Init
+      run: terraform init -backend=false
+
+    - name: Terraform Validate
+      run: terraform validate
+
+    - name: Terraform Plan
+      run: terraform plan -var-file=terraform.tfvars.example
+
+  terraform-security:
+    name: 'Terraform Security Scan'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./terraform
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+
+    - name: Terraform Init
+      run: terraform init -backend=false
+
+    - name: Run TFSec
+      uses: aquasecurity/tfsec-action@v1.0.3
+      with:
+        working_directory: ./terraform
+        soft_fail: true
+
+  terraform-deploy:
+    name: 'Terraform Deploy'
+    runs-on: ubuntu-latest
+    needs: [terraform-validate, terraform-security]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    defaults:
+      run:
+        working-directory: ./terraform
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+
+    - name: Setup Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Configure gcloud
+      run: |
+        gcloud config set project ${{ secrets.GCP_PROJECT_ID }}
+        gcloud config set compute/region us-central1
+        gcloud config set compute/zone us-central1-a
+
+    - name: Terraform Init
+      run: terraform init
+
+    - name: Terraform Plan
+      run: terraform plan -var-file=terraform.tfvars.example
+      env:
+        TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
+        TF_VAR_zabbix_db_password: ${{ secrets.ZABBIX_DB_PASSWORD }}
+        TF_VAR_zabbix_admin_password: ${{ secrets.ZABBIX_ADMIN_PASSWORD }}
+        TF_VAR_mysql_root_password: ${{ secrets.MYSQL_ROOT_PASSWORD }}
+
+    - name: Terraform Apply
+      run: terraform apply -auto-approve -var-file=terraform.tfvars.example
+      env:
+        TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
+        TF_VAR_zabbix_db_password: ${{ secrets.ZABBIX_DB_PASSWORD }}
+        TF_VAR_zabbix_admin_password: ${{ secrets.ZABBIX_ADMIN_PASSWORD }}
+        TF_VAR_mysql_root_password: ${{ secrets.MYSQL_ROOT_PASSWORD }}
+
+    - name: Terraform Output
+      run: terraform output
+      env:
+        TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
+        TF_VAR_zabbix_db_password: ${{ secrets.ZABBIX_DB_PASSWORD }}
+        TF_VAR_zabbix_admin_password: ${{ secrets.ZABBIX_ADMIN_PASSWORD }}
+        TF_VAR_mysql_root_password: ${{ secrets.MYSQL_ROOT_PASSWORD }}
+
+  zabbix-health-check:
+    name: 'Zabbix Health Check'
+    runs-on: ubuntu-latest
+    needs: terraform-deploy
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Get Zabbix Server IP
+      id: get-ip
+      run: |
+        cd terraform
+        echo "zabbix_ip=$(terraform output -raw zabbix_external_ip)" >> $GITHUB_OUTPUT
+
+    - name: Wait for Zabbix to be ready
+      run: |
+        echo "Aguardando Zabbix ficar disponível..."
+        for i in {1..30}; do
+          if curl -f -s http://${{ steps.get-ip.outputs.zabbix_ip }}/zabbix > /dev/null; then
+            echo "Zabbix está disponível!"
+            break
+          fi
+          echo "Tentativa $i/30 - Aguardando..."
+          sleep 30
+        done
+
+    - name: Health Check
+      run: |
+        echo "Verificando saúde do Zabbix..."
+        curl -f -s http://${{ steps.get-ip.outputs.zabbix_ip }}/zabbix || exit 1
+        echo "Zabbix está funcionando corretamente!"
+
+  notify:
+    name: 'Notify Deployment'
+    runs-on: ubuntu-latest
+    needs: [terraform-deploy, zabbix-health-check]
+    if: always() && github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Notify Success
+      if: needs.zabbix-health-check.result == 'success'
+      run: |
+        echo "Deploy do Zabbix concluído com sucesso!"
+        echo "URL: http://$(cd terraform && terraform output -raw zabbix_external_ip)/zabbix"
+        echo "Usuário: admin"
+        echo "Senha: [configurada em secrets]"
+
+    - name: Notify Failure
+      if: needs.zabbix-health-check.result == 'failure'
+      run: |
+        echo "Deploy do Zabbix falhou!"
+        echo "Verifique os logs para mais detalhes."
